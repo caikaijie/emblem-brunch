@@ -11,17 +11,15 @@ module.exports = class EmblemCompiler
 
   setup: (@config) ->
     @window = vm.createContext(jsdom.jsdom().createWindow())
+    @window['navigator'] = {userAgent: 'NodeJS Jsdom'}
     paths = @config.files.templates.paths
     if paths.jquery
-      # @window.run fs.readFileSync paths.jquery, 'utf8'
-      vm.runInContext fs.readFileSync(paths.jquery, 'utf8'), @window
-    # @window.run fs.readFileSync paths.handlebars, 'utf8'
-    vm.runInContext fs.readFileSync(paths.handlebars, 'utf8'), @window
-    # @window.run fs.readFileSync paths.emblem, 'utf8'
-    vm.runInContext fs.readFileSync(paths.emblem, 'utf8'), @window
+      vm.runInContext fs.readFileSync(paths.jquery, 'utf8'), @window, paths.jquery
+    if paths.handlebars
+      vm.runInContext fs.readFileSync(paths.handlebars, 'utf8'), @window, paths.handlebars
+    vm.runInContext fs.readFileSync(paths.emblem, 'utf8'), @window, paths.emblem
     if paths.ember
-      # @window.run fs.readFileSync paths.ember, 'utf8'
-      vm.runInContext fs.readFileSync(paths.ember, 'utf8'), @window
+      vm.runInContext fs.readFileSync(paths.ember, 'utf8'), @window, paths.ember
       @ember = true
     else
       @ember = false
@@ -39,14 +37,19 @@ module.exports = class EmblemCompiler
       if @config?.modules?.nameCleaner
         path = @config.modules.nameCleaner(path)
       if @ember
-        path = path
-          .replace(new RegExp('\\\\', 'g'), '/')
-          .replace(/^app\//, '')
-          .replace(/^templates\//, '')
-          .replace(/\/templates\//, '/')
-          .replace(/\.\w+$/, '')
-        content = @window.Emblem.precompile @window.Ember.Handlebars, data
-        result = "Ember.TEMPLATES[#{JSON.stringify(path)}] = Ember.Handlebars.template(#{content});module.exports = module.id;"
+        mapper = @config?.plugins?.emblem?.templateNameMapper
+        if mapper?
+          path = mapper path
+        if @window.Ember.HTMLBars?
+          if not @window.Ember.Handlebars.AST?
+            ast = @window.Ember.__loader.require("htmlbars-syntax/handlebars/compiler/ast");
+            @window.Ember.Handlebars.AST = ast['default']
+          content = @window.Emblem.precompile @window.Ember.Handlebars, data
+          result = "module.exports = Ember.Handlebars.template(#{content});"
+        else
+          content = @window.Emblem.precompile @window.Ember.Handlebars, data
+          path2 = JSON.stringify(path)
+          result = "Ember.TEMPLATES[#{path2}] = Ember.Handlebars.template(#{content});module.exports = #{path2};"
       else
         content = @window.Emblem.precompile @window.Handlebars, data
         result = "module.exports = Handlebars.template(#{content});"
